@@ -17,15 +17,15 @@ document.addEventListener('DOMContentLoaded', () => {
 function setupTabs() {
   const tabBtns = document.querySelectorAll('.tab-btn');
   const tabContents = document.querySelectorAll('.tab-content');
-  
+
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const tabId = btn.dataset.tab;
-      
+
       // Update buttons
       tabBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      
+
       // Update content
       tabContents.forEach(content => {
         content.classList.remove('active');
@@ -43,7 +43,7 @@ function setupTabs() {
 function loadSettings() {
   chrome.storage.local.get(['settings'], (data) => {
     const settings = data.settings || {};
-    
+
     // Notification settings
     document.getElementById('development').checked = settings.development !== false;
     document.getElementById('ai').checked = settings.ai !== false;
@@ -60,13 +60,13 @@ function loadStats() {
   chrome.storage.local.get(['stats', 'seenJobs'], (data) => {
     const stats = data.stats || {};
     const seenJobs = data.seenJobs || [];
-    
+
     // Last check time
     if (stats.lastCheck) {
       const lastCheck = new Date(stats.lastCheck);
       const now = new Date();
       const diffMinutes = Math.floor((now - lastCheck) / 60000);
-      
+
       let timeText;
       if (diffMinutes < 1) {
         timeText = 'الآن';
@@ -75,15 +75,15 @@ function loadStats() {
       } else {
         timeText = lastCheck.toLocaleTimeString('ar-SA');
       }
-      
+
       document.getElementById('lastCheck').textContent = timeText;
     } else {
       document.getElementById('lastCheck').textContent = 'لم يتم الفحص بعد';
     }
-    
+
     // Today count
     document.getElementById('todayCount').textContent = stats.todayCount || 0;
-    
+
     // Total seen
     document.getElementById('totalSeen').textContent = seenJobs.length;
   });
@@ -116,12 +116,28 @@ function loadTrackedProjects() {
           <div class="tracked-title" title="${project.title}">${project.title}</div>
           <div class="tracked-meta">
             <span class="status-tag ${statusClass}">${project.status}</span>
-            <span class="comm-tag">💬 ${project.communications}</span>
+            <span class="comm-tag">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left: 4px;">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg> 
+              ${project.communications}
+            </span>
           </div>
         </div>
         <div class="tracked-actions">
-          <button class="btn-icon untrack-btn" data-id="${id}" title="إلغاء المراقبة">🗑️</button>
-          <a href="${project.url}" target="_blank" class="btn-icon link-btn" title="فتح المشروع">🔗</a>
+          <button class="btn-icon untrack-btn" data-id="${id}" title="إلغاء المراقبة">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+          <a href="${project.url}" target="_blank" class="btn-icon link-btn" title="فتح المشروع">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+          </a>
         </div>
       `;
       container.appendChild(item);
@@ -166,28 +182,28 @@ function setupEventListeners() {
   ['development', 'ai', 'all', 'sound'].forEach(id => {
     document.getElementById(id).addEventListener('change', saveNotificationSettings);
   });
-  
+
   // Interval change
   document.getElementById('interval').addEventListener('change', (e) => {
     saveNotificationSettings();
-    chrome.runtime.sendMessage({ 
-      action: 'updateAlarm', 
-      interval: parseInt(e.target.value) 
+    chrome.runtime.sendMessage({
+      action: 'updateAlarm',
+      interval: parseInt(e.target.value)
     });
   });
-  
+
   // Check now button
   document.getElementById('checkNowBtn').addEventListener('click', checkNow);
-  
+
   // Clear history button
   document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
-  
+
   // Test notification button
   document.getElementById('testNotificationBtn').addEventListener('click', testNotification);
-  
+
   // Test sound button
   document.getElementById('testSoundBtn').addEventListener('click', testSound);
-  
+
   // Debug button
   document.getElementById('debugBtn').addEventListener('click', debugConnection);
 }
@@ -203,7 +219,7 @@ function saveNotificationSettings() {
     sound: document.getElementById('sound').checked,
     interval: parseInt(document.getElementById('interval').value)
   };
-  
+
   chrome.storage.local.set({ settings });
 }
 
@@ -213,44 +229,44 @@ function saveNotificationSettings() {
 function checkNow() {
   const btn = document.getElementById('checkNowBtn');
   const resultDiv = document.getElementById('checkResult');
-  
+
   if (!btn) return;
 
   btn.disabled = true;
-  btn.textContent = '⏳ جاري الفحص...';
+  btn.textContent = 'جاري الفحص...';
   resultDiv.classList.add('hidden');
   resultDiv.classList.remove('success', 'error', 'info');
-  
+
   chrome.runtime.sendMessage({ action: 'checkNow' }, (response) => {
     // Always reset button
     btn.disabled = false;
-    btn.textContent = '🔍 فحص الآن';
-    
+    btn.textContent = 'فحص الآن';
+
     if (chrome.runtime.lastError) {
       resultDiv.classList.remove('hidden');
       resultDiv.classList.add('error');
-      resultDiv.textContent = 'خطأ في الاتصال بالملحق (Service Worker). حاول مرة أخرى.';
+      resultDiv.textContent = 'خطأ في الاتصال بالملحق. حاول مرة أخرى.';
       console.error('Runtime Error:', chrome.runtime.lastError);
       return;
     }
 
     resultDiv.classList.remove('hidden');
-    
+
     if (response && response.success) {
       if (response.newJobs > 0) {
         resultDiv.classList.add('success');
-        resultDiv.textContent = `✓ تم العثور على ${response.newJobs} مشاريع جديدة!`;
+        resultDiv.textContent = `تم العثور على ${response.newJobs} مشاريع جديدة!`;
       } else {
         resultDiv.classList.add('info');
         resultDiv.textContent = 'تم الفحص: لا توجد مشاريع جديدة حالياً';
       }
     } else {
       resultDiv.classList.add('error');
-      resultDiv.textContent = `خطأ: ${response?.error || 'استجابة غير صالح'}`;
+      resultDiv.textContent = `خطأ: ${response?.error || 'استجابة غير صالحة'}`;
     }
-    
+
     loadStats();
-    
+
     // Hide message after 5 seconds
     setTimeout(() => {
       if (resultDiv) resultDiv.classList.add('hidden');
@@ -266,7 +282,7 @@ function clearHistory() {
     chrome.runtime.sendMessage({ action: 'clearHistory' }, (response) => {
       if (response && response.success) {
         loadStats();
-        alert('✓ تم مسح السجل بنجاح');
+        alert('تم مسح السجل بنجاح');
       }
     });
   }
@@ -277,18 +293,18 @@ function clearHistory() {
 // ==========================================
 function testNotification() {
   const statusDiv = document.getElementById('testStatus');
-  
+
   chrome.runtime.sendMessage({ action: 'testNotification' }, (response) => {
     statusDiv.classList.remove('hidden', 'success', 'error');
-    
+
     if (response && response.success) {
       statusDiv.classList.add('success');
-      statusDiv.textContent = '✓ تم إرسال الإشعار التجريبي';
+      statusDiv.textContent = 'تم إرسال الإشعار التجريبي';
     } else {
       statusDiv.classList.add('error');
-      statusDiv.textContent = '✗ فشل إرسال الإشعار';
+      statusDiv.textContent = 'فشل إرسال الإشعار';
     }
-    
+
     setTimeout(() => {
       statusDiv.classList.add('hidden');
     }, 3000);
@@ -300,18 +316,18 @@ function testNotification() {
 // ==========================================
 function testSound() {
   const statusDiv = document.getElementById('testStatus');
-  
+
   chrome.runtime.sendMessage({ action: 'testSound' }, (response) => {
     statusDiv.classList.remove('hidden', 'success', 'error');
-    
+
     if (response && response.success) {
       statusDiv.classList.add('success');
-      statusDiv.textContent = '✓ تم تشغيل الصوت';
+      statusDiv.textContent = 'تم تشغيل الصوت';
     } else {
       statusDiv.classList.add('error');
-      statusDiv.textContent = '✗ فشل تشغيل الصوت';
+      statusDiv.textContent = 'فشل تشغيل الصوت';
     }
-    
+
     setTimeout(() => {
       statusDiv.classList.add('hidden');
     }, 3000);
@@ -325,20 +341,20 @@ function testSound() {
 function debugConnection() {
   const btn = document.getElementById('debugBtn');
   const resultDiv = document.getElementById('debugResult');
-  
+
   btn.disabled = true;
-  btn.textContent = '⏳ جاري الفحص...';
+  btn.textContent = 'جاري الفحص...';
   resultDiv.classList.remove('hidden');
   resultDiv.textContent = 'جاري الاتصال بمستقل...';
-  
+
   chrome.runtime.sendMessage({ action: 'debugFetch' }, (response) => {
     btn.disabled = false;
-    btn.textContent = '🐛 فحص الاتصال بمستقل';
-    
+    btn.textContent = 'فحص الاتصال بمستقل';
+
     if (response && response.success) {
-      resultDiv.textContent = `✓ الاتصال ناجح!\nحجم الصفحة: ${response.length} حرف\n\nافتح Console (F12) لرؤية التفاصيل`;
+      resultDiv.textContent = `الاتصال ناجح!\nحجم الصفحة: ${response.length} حرف\n\nافتح Console (F12) لرؤية التفاصيل`;
     } else {
-      resultDiv.textContent = `✗ فشل الاتصال: ${response?.error || 'خطأ غير معروف'}`;
+      resultDiv.textContent = `فشل الاتصال: ${response?.error || 'خطأ غير معروف'}`;
     }
   });
 }

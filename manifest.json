@@ -10,13 +10,19 @@
     "offscreen"
   ],
   "host_permissions": [
-    "https://mostaql.com/*"
+    "https://mostaql.com/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*"
   ],
   "content_scripts": [
     {
       "matches": ["https://mostaql.com/project/*"],
       "js": ["content.js"],
       "css": ["content.css"]
+    },
+    {
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "js": ["chatgpt.js"]
     }
   ],
   "background": {
