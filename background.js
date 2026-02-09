@@ -12,13 +12,13 @@ const MOSTAQL_URLS = {
 // Initialize extension on install
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Extension installed');
-  
+
   // Set default settings
   chrome.storage.local.set({
     settings: {
       development: true,
       ai: true,
-      all: false,
+      all: true,
       sound: true,
       interval: 1
     },
@@ -30,7 +30,7 @@ chrome.runtime.onInstalled.addListener(() => {
     },
     trackedProjects: {}
   });
-  
+
   // Create alarm for checking jobs
   chrome.alarms.create('checkJobs', { periodInMinutes: 1 });
 });
@@ -50,27 +50,27 @@ async function checkForNewJobs() {
     const settings = data.settings || {};
     let seenJobs = data.seenJobs || [];
     let stats = data.stats || { lastCheck: null, todayCount: 0, todayDate: new Date().toDateString() };
-    
+
     // Reset today count if new day
     if (stats.todayDate !== new Date().toDateString()) {
       stats.todayCount = 0;
       stats.todayDate = new Date().toDateString();
     }
-    
+
     let allNewJobs = [];
-    
+
     // Check each enabled category
     for (const [category, url] of Object.entries(MOSTAQL_URLS)) {
       if (settings[category]) {
         console.log(`Checking category: ${category}`);
         const jobs = await fetchJobs(url);
         console.log(`Found ${jobs.length} total jobs in ${category}`);
-        
+
         const newJobs = jobs.filter(job => !seenJobs.includes(job.id));
         console.log(`Found ${newJobs.length} NEW jobs in ${category}`);
-        
+
         allNewJobs = allNewJobs.concat(newJobs);
-        
+
         // Add new job IDs to seen list
         newJobs.forEach(job => {
           if (!seenJobs.includes(job.id)) {
@@ -79,32 +79,32 @@ async function checkForNewJobs() {
         });
       }
     }
-    
+
     // Keep only last 500 job IDs to prevent storage overflow
     if (seenJobs.length > 500) {
       seenJobs = seenJobs.slice(-500);
     }
-    
+
     // Update stats
     stats.lastCheck = new Date().toISOString();
     stats.todayCount += allNewJobs.length;
-    
+
     // Save to storage
     await chrome.storage.local.set({ seenJobs, stats });
-    
+
     // Show notification if new jobs found
     if (allNewJobs.length > 0) {
       showNotification(allNewJobs);
-      
+
       if (settings.sound) {
         playSound();
       }
     }
-    
+
     console.log(`✓ Check completed at ${new Date().toLocaleTimeString()}, found ${allNewJobs.length} new jobs`);
-    
+
     return { success: true, newJobs: allNewJobs.length, totalChecked: seenJobs.length };
-    
+
   } catch (error) {
     console.error('Error checking jobs:', error);
     return { success: false, error: error.message };
@@ -117,7 +117,7 @@ async function fetchJobs(url) {
     // Add cache buster
     const fetchUrl = url + (url.includes('?') ? '&' : '?') + '_cb=' + Date.now();
     console.log(`Fetching: ${fetchUrl}`);
-    
+
     const response = await fetch(fetchUrl, {
       method: 'GET',
       headers: {
@@ -128,27 +128,27 @@ async function fetchJobs(url) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
-    
+
     if (!response.ok) {
       console.error(`HTTP Error: ${response.status}`);
       return [];
     }
-    
+
     const html = await response.text();
     console.log(`Received HTML length: ${html.length}`);
-    
+
     // Check for Cloudflare
     if (html.includes('Cloudflare') || html.includes('challenge-platform')) {
-        console.error('Cloudflare challenge detected. Please open Mostaql.com in a tab first.');
-        return [];
+      console.error('Cloudflare challenge detected. Please open Mostaql.com in a tab first.');
+      return [];
     }
-    
+
     // Use Offscreen Document for DOM Parsing (SAFE & ROBUST)
     const jobs = await parseJobsOffscreen(html);
-    
+
     console.log(`Parsed ${jobs.length} jobs via Offscreen`);
     return jobs;
-    
+
   } catch (error) {
     console.error('Error fetching jobs:', error);
     return [];
@@ -157,124 +157,124 @@ async function fetchJobs(url) {
 
 // Track specific projects for changes
 async function checkTrackedProjects() {
-    const data = await chrome.storage.local.get(['trackedProjects', 'settings']);
-    const trackedProjects = data.trackedProjects || {};
-    const settings = data.settings || {};
+  const data = await chrome.storage.local.get(['trackedProjects', 'settings']);
+  const trackedProjects = data.trackedProjects || {};
+  const settings = data.settings || {};
 
-    const projectIds = Object.keys(trackedProjects);
-    if (projectIds.length === 0) return;
+  const projectIds = Object.keys(trackedProjects);
+  if (projectIds.length === 0) return;
 
-    console.log(`Checking ${projectIds.length} tracked projects...`);
+  console.log(`Checking ${projectIds.length} tracked projects...`);
 
-    for (const id of projectIds) {
-        const project = trackedProjects[id];
-        try {
-            const response = await fetch(project.url, { cache: 'no-store' });
-            if (!response.ok) continue;
-            
-            const html = await response.text();
-            const currentData = await parseTrackedDataOffscreen(html);
+  for (const id of projectIds) {
+    const project = trackedProjects[id];
+    try {
+      const response = await fetch(project.url, { cache: 'no-store' });
+      if (!response.ok) continue;
 
-            if (currentData) {
-                let changed = false;
-                let changeMsg = '';
+      const html = await response.text();
+      const currentData = await parseTrackedDataOffscreen(html);
 
-                if (currentData.status !== project.status) {
-                    changed = true;
-                    changeMsg += `الحالة: ${project.status} ➔ ${currentData.status}\n`;
-                }
+      if (currentData) {
+        let changed = false;
+        let changeMsg = '';
 
-                if (currentData.communications !== project.communications) {
-                    changed = true;
-                    changeMsg += `التواصلات: ${project.communications} ➔ ${currentData.communications}`;
-                }
-
-                if (changed) {
-                    console.log(`Update for project ${id}: ${changeMsg}`);
-                    showTrackedNotification(project, changeMsg);
-                    if (settings.sound) {
-                        playTrackedSound();
-                    }
-                    
-                    // Update stored data
-                    trackedProjects[id].status = currentData.status;
-                    trackedProjects[id].communications = currentData.communications;
-                    trackedProjects[id].lastChecked = new Date().toISOString();
-                    await chrome.storage.local.set({ trackedProjects });
-                }
-            }
-        } catch (error) {
-            console.error(`Error checking tracked project ${id}:`, error);
+        if (currentData.status !== project.status) {
+          changed = true;
+          changeMsg += `الحالة: ${project.status} -> ${currentData.status}\n`;
         }
+
+        if (currentData.communications !== project.communications) {
+          changed = true;
+          changeMsg += `التواصلات: ${project.communications} -> ${currentData.communications}`;
+        }
+
+        if (changed) {
+          console.log(`Update for project ${id}: ${changeMsg}`);
+          showTrackedNotification(project, changeMsg);
+          if (settings.sound) {
+            playTrackedSound();
+          }
+
+          // Update stored data
+          trackedProjects[id].status = currentData.status;
+          trackedProjects[id].communications = currentData.communications;
+          trackedProjects[id].lastChecked = new Date().toISOString();
+          await chrome.storage.local.set({ trackedProjects });
+        }
+      }
+    } catch (error) {
+      console.error(`Error checking tracked project ${id}:`, error);
     }
+  }
 }
 
 async function parseTrackedDataOffscreen(html) {
-    try {
-        await setupOffscreenDocument();
-        return new Promise((resolve) => {
-            chrome.runtime.sendMessage({ action: 'parseTrackedData', html: html }, (response) => {
-                if (response && response.success) {
-                    resolve(response.data);
-                } else {
-                    resolve(null);
-                }
-            });
-            setTimeout(() => resolve(null), 3000);
-        });
-    } catch (e) {
-        return null;
-    }
+  try {
+    await setupOffscreenDocument();
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'parseTrackedData', html: html }, (response) => {
+        if (response && response.success) {
+          resolve(response.data);
+        } else {
+          resolve(null);
+        }
+      });
+      setTimeout(() => resolve(null), 3000);
+    });
+  } catch (e) {
+    return null;
+  }
 }
 
 // Send HTML to offscreen document for parsing
 async function parseJobsOffscreen(html) {
-    try {
-        await setupOffscreenDocument();
-        
-        // Wait a bit for listener
-        await new Promise(r => setTimeout(r, 100));
+  try {
+    await setupOffscreenDocument();
 
-        return new Promise((resolve) => {
-            chrome.runtime.sendMessage({ action: 'parseJobs', html: html }, (response) => {
-                if (chrome.runtime.lastError) {
-                    console.error('Parse Error:', chrome.runtime.lastError);
-                    resolve([]);
-                } else if (response && response.success) {
-                    resolve(response.jobs);
-                } else {
-                    resolve([]);
-                }
-            });
-            
-            // Timeout safety
-            setTimeout(() => resolve([]), 3000);
-        });
-    } catch (e) {
-        console.error('Offscreen Parse Error:', e);
-        return [];
-    }
+    // Wait a bit for listener
+    await new Promise(r => setTimeout(r, 100));
+
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'parseJobs', html: html }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('Parse Error:', chrome.runtime.lastError);
+          resolve([]);
+        } else if (response && response.success) {
+          resolve(response.jobs);
+        } else {
+          resolve([]);
+        }
+      });
+
+      // Timeout safety
+      setTimeout(() => resolve([]), 3000);
+    });
+  } catch (e) {
+    console.error('Offscreen Parse Error:', e);
+    return [];
+  }
 }
 
 // Helper: Setup Offscreen (Generic)
 async function setupOffscreenDocument() {
-    const existing = await chrome.runtime.getContexts({
-        contextTypes: ['OFFSCREEN_DOCUMENT']
-    });
+  const existing = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT']
+  });
 
-    if (existing.length === 0) {
-        await chrome.offscreen.createDocument({
-            url: 'offscreen.html',
-            reasons: ['AUDIO_PLAYBACK', 'DOM_PARSER'],
-            justification: 'Parsing HTML and Playing Audio'
-        });
-    }
+  if (existing.length === 0) {
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['AUDIO_PLAYBACK', 'DOM_PARSER'],
+      justification: 'Parsing HTML and Playing Audio'
+    });
+  }
 }
 
 // Clean title text
 function cleanTitle(text) {
   if (!text) return 'مشروع جديد';
-  
+
   return text
     .replace(/<[^>]*>/g, '') // Remove HTML tags
     .replace(/&amp;/g, '&')
@@ -290,14 +290,14 @@ function cleanTitle(text) {
 // Show notification
 function showNotification(jobs) {
   const job = jobs[0];
-  const title = jobs.length === 1 
-    ? '🎉 مشروع جديد على مستقل!' 
-    : `🎉 ${jobs.length} مشاريع جديدة على مستقل!`;
-  
+  const title = jobs.length === 1
+    ? 'مشروع جديد على مستقل'
+    : `${jobs.length} مشاريع جديدة على مستقل`;
+
   const message = jobs.length === 1
     ? `${job.title}${job.budget ? '\n' + job.budget : ''}`
     : `${job.title}\nو ${jobs.length - 1} مشاريع أخرى`;
-  
+
   chrome.notifications.create({
     type: 'basic',
     iconUrl: 'icons/icon128.png',
@@ -312,16 +312,16 @@ function showNotification(jobs) {
 }
 
 function showTrackedNotification(project, changeMsg) {
-    chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon128.png',
-        title: `👀 تحديث في مشروع: ${project.title}`,
-        message: changeMsg,
-        priority: 2,
-        requireInteraction: true
-    }, (notificationId) => {
-        chrome.storage.local.set({ [`notification_${notificationId}`]: project.url });
-    });
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: `تحديث في مشروع: ${project.title}`,
+    message: changeMsg,
+    priority: 2,
+    requireInteraction: true
+  }, (notificationId) => {
+    chrome.storage.local.set({ [`notification_${notificationId}`]: project.url });
+  });
 }
 
 // Handle notification click
@@ -347,7 +347,7 @@ async function playSound() {
     } catch (e) {
       console.log('getContexts not supported, trying to create document');
     }
-    
+
     if (existingContexts.length === 0) {
       try {
         await chrome.offscreen.createDocument({
@@ -362,31 +362,31 @@ async function playSound() {
         }
       }
     }
-    
+
     // Send message to play sound
     setTimeout(() => {
       chrome.runtime.sendMessage({ action: 'playSound' });
     }, 100);
-    
+
   } catch (error) {
     console.error('Error playing sound:', error);
   }
 }
 
 async function playTrackedSound() {
-    try {
-        await setupOffscreenDocument();
-        setTimeout(() => {
-            chrome.runtime.sendMessage({ action: 'playTrackedSound' });
-        }, 100);
-    } catch (error) {
-        console.error('Error playing tracked sound:', error);
-    }
+  try {
+    await setupOffscreenDocument();
+    setTimeout(() => {
+      chrome.runtime.sendMessage({ action: 'playTrackedSound' });
+    }, 100);
+  } catch (error) {
+    console.error('Error playing tracked sound:', error);
+  }
 }
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  
+
   // Check now
   if (message.action === 'checkNow') {
     checkForNewJobs()
@@ -399,7 +399,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true; // Indicates async response
   }
-  
+
   // Test notification
   if (message.action === 'testNotification') {
     const testJobs = [{
@@ -412,15 +412,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ success: true });
     return true;
   }
-  
+
   // Test sound
   if (message.action === 'testSound') {
     playSound();
     sendResponse({ success: true });
     return true;
   }
-  
-  
+
+
   // Update alarm interval
   if (message.action === 'updateAlarm') {
     chrome.alarms.clear('checkJobs');
@@ -428,10 +428,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ success: true });
     return true;
   }
-  
+
   // Clear history
   if (message.action === 'clearHistory') {
-    chrome.storage.local.set({ 
+    chrome.storage.local.set({
       seenJobs: [],
       stats: {
         lastCheck: null,
@@ -443,7 +443,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
-  
+
   // Debug: Get HTML
   if (message.action === 'debugFetch') {
     fetch(MOSTAQL_URLS.all)
