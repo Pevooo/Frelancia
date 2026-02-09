@@ -25,6 +25,7 @@
     <!-- Tabs -->
     <div class="tabs">
       <button class="tab-btn active" data-tab="notifications">التنبيهات</button>
+      <button class="tab-btn" data-tab="prompts">الأوامر</button>
       <button class="tab-btn" data-tab="settings">الإعدادات</button>
     </div>
 
@@ -165,6 +166,45 @@
       </div>
 
       <div id="checkResult" class="result-message hidden"></div>
+    </div>
+
+    <!-- Tab: Prompts -->
+    <div class="tab-content" id="prompts">
+      <div class="actions" style="margin-bottom: 15px;">
+        <button id="addPromptBtn" class="btn primary full-width">إضافة أمر جديد</button>
+      </div>
+
+      <div id="promptsList" class="prompts-list">
+        <!-- Prompts will be loaded here -->
+      </div>
+
+      <div id="promptForm" class="modal hidden">
+        <div class="modal-content">
+          <h3>إضافة/تعديل أمر</h3>
+          <input type="hidden" id="promptId">
+          <div class="form-group">
+            <label>العنوان</label>
+            <input type="text" id="promptTitle" placeholder="مثال: تقديم عرض برمجة">
+          </div>
+          <div class="form-group">
+            <label>نص الأمر</label>
+            <textarea id="promptContent" rows="6" placeholder="اكتب الأمر هنا..."></textarea>
+          </div>
+          <div class="modal-actions">
+            <button id="savePromptBtn" class="btn primary">حفظ</button>
+            <button id="cancelPromptBtn" class="btn secondary">إلغاء</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>إدارة الأوامر</h2>
+        <div class="actions-row">
+          <button id="exportPromptsBtn" class="btn secondary">تصدير الأوامر</button>
+          <button id="importPromptsBtn" class="btn secondary">استيراد الأوامر</button>
+          <input type="file" id="importPromptsInput" accept=".json" class="hidden">
+        </div>
+      </div>
     </div>
 
     <!-- Tab: Settings -->

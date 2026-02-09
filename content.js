@@ -152,23 +152,55 @@ function injectTrackButton() {
 
                 prompts.forEach((p, index) => {
                     const li = document.createElement('li');
+                    li.className = 'prompt-li'; // Add class for styling
                     if (mainBtn.dataset.promptId === p.id) {
-                        li.className = 'active'; // Mark current as active
+                        li.classList.add('active');
                     }
 
+                    // Flex container for the list item
+                    const itemContainer = document.createElement('div');
+                    itemContainer.style.display = 'flex';
+                    itemContainer.style.alignItems = 'center';
+                    itemContainer.style.justifyContent = 'space-between';
+                    itemContainer.style.width = '100%';
+
+                    // 1. Select Action (Title)
                     const a = document.createElement('a');
                     a.href = 'javascript:void(0);';
                     a.textContent = p.title;
+                    a.style.flex = '1'; // Take remaining space
+                    a.style.padding = '5px 10px';
+                    a.style.color = 'inherit';
+                    a.style.textDecoration = 'none';
                     a.onclick = (e) => {
                         e.preventDefault();
-                        mainBtn.dataset.promptId = p.id; // Update current selection
+                        mainBtn.dataset.promptId = p.id;
                         mainBtn.title = `استخدام القالب: ${p.title}`;
 
                         group.classList.remove('open');
-                        renderMenu(); // Re-render to update active class
+                        renderMenu();
                     };
 
-                    li.appendChild(a);
+                    // 2. Edit Action (Icon)
+                    const editBtn = document.createElement('span');
+                    editBtn.innerHTML = '<i class="fa fa-pencil"></i>';
+                    editBtn.style.cursor = 'pointer';
+                    editBtn.style.padding = '5px 10px';
+                    editBtn.style.color = '#777';
+                    editBtn.title = 'تعديل القالب';
+                    editBtn.onclick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation(); // Prevent selecting the prompt
+                        group.classList.remove('open');
+                        createPromptModal(renderMenu, p);
+                    };
+                    editBtn.onmouseover = () => editBtn.style.color = '#2386c8';
+                    editBtn.onmouseout = () => editBtn.style.color = '#777';
+
+                    itemContainer.appendChild(a);
+                    itemContainer.appendChild(editBtn); // Add edit button
+
+                    li.appendChild(itemContainer);
                     menuList.appendChild(li);
                 });
 
@@ -185,7 +217,7 @@ function injectTrackButton() {
                 addLink.onclick = (e) => {
                     e.preventDefault();
                     group.classList.remove('open');
-                    createPromptModal(renderMenu);
+                    createPromptModal(renderMenu, null);
                 };
                 addLi.appendChild(addLink);
                 menuList.appendChild(addLi);
@@ -303,26 +335,49 @@ function getDefaultPrompts() {
 }
 
 function loadPrompts(callback) {
-    chrome.storage.local.get(['customPrompts'], (data) => {
-        const custom = data.customPrompts || [];
-        const defaults = getDefaultPrompts();
-        callback([...defaults, ...custom]);
+    chrome.storage.local.get(['prompts'], (data) => {
+        let allPrompts = data.prompts || [];
+
+        // If no prompts exist at all, use default (but don't save it automatically unless user acts, 
+        // OR we could seed it. For now let's just use it in memory if storage is empty)
+        if (allPrompts.length === 0) {
+            allPrompts = getDefaultPrompts();
+        }
+
+        callback(allPrompts);
     });
 }
 
-function savePrompt(title, content, callback) {
-    chrome.storage.local.get(['customPrompts'], (data) => {
-        const custom = data.customPrompts || [];
-        custom.push({
-            id: 'custom_' + Date.now(),
-            title: title,
-            content: content
-        });
-        chrome.storage.local.set({ customPrompts: custom }, callback);
+function savePrompt(promptData, callback) {
+    chrome.storage.local.get(['prompts'], (data) => {
+        let prompts = data.prompts || [];
+
+        if (promptData.id) {
+            // Edit existing
+            const index = prompts.findIndex(p => p.id === promptData.id);
+            if (index !== -1) {
+                prompts[index] = { ...prompts[index], ...promptData };
+            } else {
+                // If ID provided but not found (rare), push as new? Or error? 
+                // Let's treat as new if not found, or just push.
+                prompts.push(promptData);
+            }
+        } else {
+            // New Prompt
+            const newPrompt = {
+                id: crypto.randomUUID(),
+                title: promptData.title,
+                content: promptData.content,
+                createdAt: new Date().toISOString()
+            };
+            prompts.push(newPrompt);
+        }
+
+        chrome.storage.local.set({ prompts }, callback);
     });
 }
 
-function createPromptModal(onSave) {
+function createPromptModal(onSave, existingPrompt = null) {
     if (document.getElementById('mostaql-prompt-modal')) return;
 
     const modalOverlay = document.createElement('div');
@@ -342,6 +397,7 @@ function createPromptModal(onSave) {
     const titleInput = document.createElement('input');
     titleInput.type = 'text';
     titleInput.className = 'mostaql-form-input';
+    if (existingPrompt) titleInput.value = existingPrompt.title;
 
     groupTitle.appendChild(titleLabel);
     groupTitle.appendChild(titleInput);
@@ -361,6 +417,7 @@ function createPromptModal(onSave) {
     const contentInput = document.createElement('textarea');
     contentInput.className = 'mostaql-form-textarea';
     contentInput.rows = '6';
+    if (existingPrompt) contentInput.value = existingPrompt.content;
 
     groupContent.appendChild(contentLabel);
     groupContent.appendChild(contentInput);
@@ -371,7 +428,7 @@ function createPromptModal(onSave) {
     btnContainer.className = 'mostaql-modal-actions';
 
     const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'حفظ القالب';
+    saveBtn.textContent = existingPrompt ? 'حفظ التعديلات' : 'حفظ القالب';
     saveBtn.className = 'btn-modal-primary';
     saveBtn.onclick = () => {
         const t = titleInput.value.trim();
@@ -379,11 +436,19 @@ function createPromptModal(onSave) {
         if (t && c) {
             saveBtn.textContent = 'جاري الحفظ...';
             saveBtn.disabled = true;
-            savePrompt(t, c, () => {
+
+            const promptData = {
+                title: t,
+                content: c
+            };
+            if (existingPrompt) promptData.id = existingPrompt.id;
+
+            savePrompt(promptData, () => {
                 document.body.removeChild(modalOverlay);
-                onSave();
+                if (onSave) onSave();
             });
-        } else {
+        }
+        else {
             alert('يرجى ملء جميع الحقول');
         }
     };

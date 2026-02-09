@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   loadStats();
   loadTrackedProjects();
+  loadPrompts();
   setupTabs();
   setupEventListeners();
 });
@@ -206,6 +207,20 @@ function setupEventListeners() {
 
   // Debug button
   document.getElementById('debugBtn').addEventListener('click', debugConnection);
+
+  // Prompts Management
+  document.getElementById('addPromptBtn').addEventListener('click', () => openPromptForm());
+  document.getElementById('savePromptBtn').addEventListener('click', savePrompt);
+  document.getElementById('cancelPromptBtn').addEventListener('click', closePromptForm);
+  document.getElementById('exportPromptsBtn').addEventListener('click', exportPrompts);
+
+  const importBtn = document.getElementById('importPromptsBtn');
+  const importInput = document.getElementById('importPromptsInput');
+
+  if (importBtn && importInput) {
+    importBtn.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', importPrompts);
+  }
 }
 
 // ==========================================
@@ -357,4 +372,225 @@ function debugConnection() {
       resultDiv.textContent = `فشل الاتصال: ${response?.error || 'خطأ غير معروف'}`;
     }
   });
+}
+
+// ==========================================
+// Prompt Management
+// ==========================================
+
+function getDefaultPrompts() {
+  return [
+    {
+      id: 'default_proposal',
+      title: 'كتابة عرض مشروع',
+      content: `أريد مساعدتك في كتابة عرض لهذا المشروع على منصة مستقل.
+
+عنوان المشروع: {title}
+
+تفاصيل المشروع:
+{description}
+
+رابط المشروع: {url}
+
+يرجى كتابة عرض احترافي ومقنع يوضح خبرتي في هذا المجال ويشرح كيف يمكنني تنفيذ المطلوب بدقة.`
+    }
+  ];
+}
+
+function loadPrompts() {
+  const container = document.getElementById('promptsList');
+  if (!container) return;
+
+  chrome.storage.local.get(['prompts'], (data) => {
+    let prompts = data.prompts || [];
+
+    // If empty, show defaults but DO NOT save them yet (unless user edits/saves).
+    // Or we can save them immediately? 
+    // Better to just display them.
+    if (prompts.length === 0) {
+      prompts = getDefaultPrompts();
+      // Optional: Save defaults to storage so they persist and can be edited/deleted
+      // chrome.storage.local.set({ prompts });
+    }
+
+    if (prompts.length === 0) { // Should not happen with defaults
+      container.innerHTML = '<p class="empty-msg">لا توجد أوامر محفوظة</p>';
+      return;
+    }
+
+    container.innerHTML = '';
+    prompts.forEach((prompt, index) => {
+      const item = document.createElement('div');
+      item.className = 'prompt-item';
+      item.innerHTML = `
+        <div class="prompt-header">
+          <span class="prompt-title">${prompt.title}</span>
+        </div>
+        <div class="prompt-preview">${prompt.content}</div>
+        <div class="prompt-actions">
+          <button class="btn-sm btn-edit" data-index="${index}">تعديل</button>
+          <button class="btn-sm btn-delete" data-index="${index}">حذف</button>
+        </div>
+      `;
+      container.appendChild(item);
+    });
+
+    // Event listeners for edit/delete buttons
+    container.querySelectorAll('.btn-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Fetch fresh data in case it changed
+        chrome.storage.local.get(['prompts'], (d) => {
+          let currentPrompts = d.prompts || [];
+          if (currentPrompts.length === 0) currentPrompts = getDefaultPrompts();
+
+          const p = currentPrompts[btn.dataset.index];
+          if (p) openPromptForm(p, btn.dataset.index);
+        });
+      });
+    });
+
+    container.querySelectorAll('.btn-delete').forEach(btn => {
+      btn.addEventListener('click', () => deletePrompt(btn.dataset.index));
+    });
+  });
+}
+
+function openPromptForm(prompt = null, index = -1) {
+  const modal = document.getElementById('promptForm');
+  const titleInput = document.getElementById('promptTitle');
+  const contentInput = document.getElementById('promptContent');
+  const idInput = document.getElementById('promptId');
+
+  if (prompt) {
+    titleInput.value = prompt.title;
+    contentInput.value = prompt.content;
+    idInput.dataset.index = index;
+  } else {
+    titleInput.value = '';
+    contentInput.value = '';
+    idInput.dataset.index = -1;
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closePromptForm() {
+  document.getElementById('promptForm').classList.add('hidden');
+}
+
+function savePrompt() {
+  const title = document.getElementById('promptTitle').value.trim();
+  const content = document.getElementById('promptContent').value.trim();
+  const idInput = document.getElementById('promptId');
+  const index = parseInt(idInput.dataset.index);
+
+  if (!title || !content) {
+    alert('يرجى ملء جميع الحقول');
+    return;
+  }
+
+  chrome.storage.local.get(['prompts'], (data) => {
+    let prompts = data.prompts || [];
+
+    // If empty storage but we were editing a default prompt (which existed in memory), 
+    // we need to initialize storage with defaults first OR just handle the push correctly.
+    // Easiest is to treat "prompts" as the source of truth.
+    if (prompts.length === 0) {
+      // If user is adding a new one, this is fine. 
+      // If user was editing a default, index might point to 0. 
+      // But prompts is empty. So prompts[0] is undefined.
+      // We should seed defaults if we are editing a default.
+      const defaults = getDefaultPrompts();
+      if (index >= 0 && index < defaults.length) {
+        // We were likely editing a default.
+        // Let's adopt the defaults into storage.
+        prompts = defaults;
+      }
+    }
+
+    // Safety check again
+    if (index >= 0 && index < prompts.length) {
+      // Edit existing
+      prompts[index] = { ...prompts[index], title, content };
+    } else {
+      // Add new
+      prompts.push({
+        id: crypto.randomUUID(),
+        title,
+        content,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    chrome.storage.local.set({ prompts }, () => {
+      closePromptForm();
+      loadPrompts();
+    });
+  });
+}
+
+function deletePrompt(index) {
+  if (confirm('هل أنت متأكد من حذف هذا الأمر؟')) {
+    chrome.storage.local.get(['prompts'], (data) => {
+      let prompts = data.prompts || [];
+
+      // If deleting a default that wasn't saved yet
+      if (prompts.length === 0) {
+        prompts = getDefaultPrompts();
+      }
+
+      if (index >= 0 && index < prompts.length) {
+        prompts.splice(index, 1);
+        chrome.storage.local.set({ prompts }, loadPrompts);
+      }
+    });
+  }
+}
+
+function exportPrompts() {
+  chrome.storage.local.get(['prompts'], (data) => {
+    let prompts = data.prompts || [];
+
+    // If empty storage, export defaults
+    if (prompts.length === 0) {
+      prompts = getDefaultPrompts();
+    }
+
+    const blob = new Blob([JSON.stringify(prompts, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mostaql-prompts.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function importPrompts(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const newPrompts = JSON.parse(e.target.result);
+      if (!Array.isArray(newPrompts)) throw new Error('Format Invalid');
+
+      chrome.storage.local.get(['prompts'], (data) => {
+        const existingPrompts = data.prompts || [];
+        // Merge strategy: Append new prompts
+        const updatedPrompts = [...existingPrompts, ...newPrompts];
+
+        chrome.storage.local.set({ prompts: updatedPrompts }, () => {
+          loadPrompts();
+          alert('تم استيراد الأوامر بنجاح');
+        });
+      });
+    } catch (err) {
+      alert('حدث خطأ أثناء قراءة الملف. تأكد من أنه ملف JSON صالح.');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = ''; // Reset input
 }
