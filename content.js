@@ -18,29 +18,66 @@ function injectTrackButton() {
         buttonContainer.id = 'mostaql-ext-btn-container';
         buttonContainer.style.display = 'inline-flex';
         buttonContainer.style.alignItems = 'center';
+        buttonContainer.style.flexDirection = 'row';
+        buttonContainer.style.flexWrap = 'nowrap';
+        buttonContainer.style.whiteSpace = 'nowrap'; // Force single line text
+        buttonContainer.style.width = 'max-content'; // Force container to fit content
+        buttonContainer.style.minWidth = 'max-content';
         buttonContainer.style.gap = '5px';
-        buttonContainer.style.marginRight = '10px'; // Spacing from other elements (RTL)
+        buttonContainer.style.marginRight = '10px';
+        buttonContainer.style.flexShrink = '0'; // Prevent container from shrinking
 
         // Find the main "Apply" button or similar primary action
         const primaryBtn = actionContainer.querySelector('a.btn-primary, button.btn-primary, .btn-primary');
 
         if (primaryBtn) {
-            // Insert after the primary button
-            primaryBtn.insertAdjacentElement('afterend', buttonContainer);
+            // Re-insert BEFORE (The "Opposite")
+            // Visual Goal: [Container] [Primary] 
+            // In RTL Row: Container (Right), Primary (Left of Container)
+            primaryBtn.insertAdjacentElement('beforebegin', buttonContainer);
 
-            // Ensure the parent container flexes correctly
+            // Adjust margins for "Container First"
+            buttonContainer.style.marginRight = '0px';
+            buttonContainer.style.marginLeft = '10px';
+
+            // Remove Explicit Order (Let DOM decide)
+            buttonContainer.style.removeProperty('order');
+
+            // Ensure the parent container flexes correctly and isn't constrained
             if (primaryBtn.parentElement) {
-                primaryBtn.parentElement.style.display = 'flex';
-                primaryBtn.parentElement.style.alignItems = 'center';
-                primaryBtn.parentElement.style.flexWrap = 'wrap';
+                const parent = primaryBtn.parentElement;
+
+                // 1. Force Parent Layout
+                parent.style.setProperty('display', 'flex', 'important');
+                parent.style.setProperty('flex-direction', 'row', 'important');
+                parent.style.setProperty('align-items', 'center', 'important');
+                parent.style.setProperty('flex-wrap', 'nowrap', 'important');
+                parent.style.setProperty('justify-content', 'flex-start', 'important'); // Aligns to Right in RTL
+                parent.style.setProperty('width', 'auto', 'important');
+                parent.style.setProperty('max-width', 'none', 'important');
+                parent.style.setProperty('min-width', 'max-content', 'important');
+                parent.style.setProperty('overflow', 'visible', 'important');
+
+                // 2. Tame the Primary Button
+                primaryBtn.style.removeProperty('order'); // Remove explicit order
+                primaryBtn.style.setProperty('float', 'none', 'important');
+                primaryBtn.style.setProperty('flex', '0 0 auto', 'important');
+                primaryBtn.style.setProperty('width', 'auto', 'important');
+                primaryBtn.style.setProperty('max-width', 'none', 'important');
+                // Remove potential conflict margins
+                primaryBtn.style.setProperty('margin-left', '0px', 'important');
+                primaryBtn.style.setProperty('margin-right', '0px', 'important');
             }
         } else {
             // Fallback: Append to the action container
             actionContainer.appendChild(buttonContainer);
             if (actionContainer) {
                 actionContainer.style.display = 'flex';
+                actionContainer.style.flexDirection = 'row';
                 actionContainer.style.alignItems = 'center';
-                actionContainer.style.flexWrap = 'wrap';
+                actionContainer.style.flexWrap = 'nowrap';
+                actionContainer.style.width = 'auto';
+                actionContainer.style.minWidth = 'max-content';
             }
         }
     }
@@ -51,7 +88,7 @@ function injectTrackButton() {
         trackBtn.id = 'track-project-btn';
         trackBtn.className = 'btn btn-success'; // Removed mrg--rs as gap handles spacing
         trackBtn.innerHTML = '<i class="fa fa-fw fa-eye"></i> مراقبة المشروع';
-        // trackBtn.style.marginRight = '10px'; // Handled by gap
+        trackBtn.style.order = '2'; // Force detailed order (swap with ChatGPT)
 
         // Check if already tracked
         const projectId = getProjectId();
@@ -77,6 +114,7 @@ function injectTrackButton() {
         const chatGptBtn = document.createElement('button');
         chatGptBtn.id = 'chatgpt-project-btn';
         chatGptBtn.className = 'btn btn-primary';
+        chatGptBtn.style.order = '1'; // Force detailed order (First)
         // Using a chat icon (fa-comments or similar available in Mostaql's FA)
         chatGptBtn.innerHTML = '<i class="fa fa-fw fa-comments-o"></i> استشارة ChatGPT';
         // chatGptBtn.style.marginRight = '10px'; // Handled by gap
