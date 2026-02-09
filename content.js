@@ -68,6 +68,7 @@ function injectTrackButton() {
         trackBtn.id = 'track-project-btn';
         trackBtn.className = 'btn btn-success'; // Base Mostaql class + our overrides
         trackBtn.innerHTML = '<i class="fa fa-fw fa-eye"></i> مراقبة المشروع';
+        trackBtn.title = 'مراقبة المشروع';
         // Order handled by DOM position now usually, or CSS
 
         // Check if already tracked
@@ -233,6 +234,38 @@ function injectTrackButton() {
 
         buttonContainer.appendChild(group);
     }
+}
+
+function handleTrackClick(btn) {
+    const projectId = getProjectId();
+    if (!projectId) return;
+
+    chrome.storage.local.get(['trackedProjects'], (data) => {
+        let tracked = data.trackedProjects || {};
+        if (tracked[projectId]) {
+            // Remove from tracking
+            delete tracked[projectId];
+            setButtonUntracked(btn);
+        } else {
+            // Add to tracking
+            tracked[projectId] = extractProjectData();
+            tracked[projectId].id = projectId;
+            setButtonTracked(btn);
+        }
+        chrome.storage.local.set({ trackedProjects: tracked });
+    });
+}
+
+function setButtonTracked(btn) {
+    btn.innerHTML = '<i class="fa fa-fw fa-check-circle"></i> مُراقبة';
+    btn.className = 'btn btn-warning'; // Change color to indicate active state
+    btn.title = 'إلغاء المراقبة';
+}
+
+function setButtonUntracked(btn) {
+    btn.innerHTML = '<i class="fa fa-fw fa-eye"></i> مراقبة المشروع';
+    btn.className = 'btn btn-success';
+    btn.title = 'مراقبة هذا المشروع';
 }
 
 function handleChatGptClick(promptId) {
@@ -470,6 +503,8 @@ function createPromptModal(onSave, existingPrompt = null) {
     modalOverlay.appendChild(modalContent);
     document.body.appendChild(modalOverlay);
 }
+
+
 
 
 // Initial injection
