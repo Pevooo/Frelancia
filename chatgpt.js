@@ -111,7 +111,7 @@ function injectPrompt() {
                     console.log('Mostaql Job Notifier: Prompt injected');
 
                     // Clear the prompt from storage so it doesn't run again on reload
-                    chrome.storage.local.remove(['pendingChatGptPrompt']);
+                    // chrome.storage.local.remove(['pendingChatGptPrompt']);
 
                     // Try to click send after a delay
                     // MODIFICATION: Auto-send disabled as per user request.
