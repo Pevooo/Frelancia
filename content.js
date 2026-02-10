@@ -319,7 +319,7 @@ function handleChatGptClick(promptId) {
         function processTemplate(content) {
 
             // Replace variables
-            let prompt = templateContent
+            let prompt = content
                 .replace(/{title}/g, projectData.title)
                 .replace(/{url}/g, projectData.url)
                 .replace(/{description}/g, description)
@@ -338,11 +338,14 @@ function handleChatGptClick(promptId) {
                 .replace(/{client_type}/g, projectData.clientType);
 
             // Save prompt to storage for the ChatGPT content script to pick up
+            // Save prompt to storage for the ChatGPT content script to pick up
             chrome.storage.local.set({ 'pendingChatGptPrompt': prompt }, () => {
                 // Open ChatGPT in a new tab
                 window.open('https://chatgpt.com/', '_blank');
             });
-        });
+        } // End processTemplate
+
+    }); // End loadPrompts callback
 }
 
 function getProjectId() {
