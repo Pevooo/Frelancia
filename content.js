@@ -218,7 +218,22 @@ function injectTrackButton() {
                 addLink.onclick = (e) => {
                     e.preventDefault();
                     group.classList.remove('open');
-                    createPromptModal(renderMenu, null);
+                    createPromptModal((newId) => {
+                        // Auto-select the newly created prompt
+                        if (newId) {
+                            mainBtn.dataset.promptId = newId;
+                            // Update info
+                            loadPrompts((prompts) => {
+                                const p = prompts.find(x => x.id === newId);
+                                if (p) {
+                                    mainBtn.title = `استخدام القالب: ${p.title}`;
+                                }
+                                renderMenu();
+                            });
+                        } else {
+                            renderMenu();
+                        }
+                    }, null);
                 };
                 addLi.appendChild(addLink);
                 menuList.appendChild(addLi);
@@ -369,36 +384,43 @@ function getDefaultPrompts() {
 
 function loadPrompts(callback) {
     chrome.storage.local.get(['prompts'], (data) => {
-        let allPrompts = data.prompts || [];
+        const storedPrompts = data.prompts || [];
+        const defaultPrompts = getDefaultPrompts();
 
-        // If no prompts exist at all, use default (but don't save it automatically unless user acts, 
-        // OR we could seed it. For now let's just use it in memory if storage is empty)
-        if (allPrompts.length === 0) {
-            allPrompts = getDefaultPrompts();
-        }
+        // Merge strategy: Start with defaults, override/add with stored
+        let merged = [...defaultPrompts];
 
-        callback(allPrompts);
+        storedPrompts.forEach(p => {
+            const index = merged.findIndex(m => m.id === p.id);
+            if (index !== -1) {
+                merged[index] = p; // Override
+            } else {
+                merged.push(p); // Add new
+            }
+        });
+
+        callback(merged);
     });
 }
 
 function savePrompt(promptData, callback) {
     chrome.storage.local.get(['prompts'], (data) => {
         let prompts = data.prompts || [];
+        let savedId = promptData.id;
 
-        if (promptData.id) {
+        if (savedId) {
             // Edit existing
-            const index = prompts.findIndex(p => p.id === promptData.id);
+            const index = prompts.findIndex(p => p.id === savedId);
             if (index !== -1) {
                 prompts[index] = { ...prompts[index], ...promptData };
             } else {
-                // If ID provided but not found (rare), push as new? Or error? 
-                // Let's treat as new if not found, or just push.
                 prompts.push(promptData);
             }
         } else {
             // New Prompt
+            savedId = crypto.randomUUID();
             const newPrompt = {
-                id: crypto.randomUUID(),
+                id: savedId,
                 title: promptData.title,
                 content: promptData.content,
                 createdAt: new Date().toISOString()
@@ -406,7 +428,9 @@ function savePrompt(promptData, callback) {
             prompts.push(newPrompt);
         }
 
-        chrome.storage.local.set({ prompts }, callback);
+        chrome.storage.local.set({ prompts }, () => {
+            if (callback) callback(savedId);
+        });
     });
 }
 
@@ -476,9 +500,9 @@ function createPromptModal(onSave, existingPrompt = null) {
             };
             if (existingPrompt) promptData.id = existingPrompt.id;
 
-            savePrompt(promptData, () => {
+            savePrompt(promptData, (savedId) => {
                 document.body.removeChild(modalOverlay);
-                if (onSave) onSave();
+                if (onSave) onSave(savedId);
             });
         }
         else {
