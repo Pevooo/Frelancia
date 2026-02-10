@@ -51,6 +51,7 @@ function loadSettings() {
     document.getElementById('all').checked = settings.all === true;
     document.getElementById('sound').checked = settings.sound !== false;
     document.getElementById('interval').value = settings.interval || 1;
+    document.getElementById('aiChatUrl').value = settings.aiChatUrl || 'https://chatgpt.com/';
   });
 }
 
@@ -221,6 +222,17 @@ function setupEventListeners() {
     importBtn.addEventListener('click', () => importInput.click());
     importInput.addEventListener('change', importPrompts);
   }
+
+  // Save Settings Button
+  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+  if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener('click', () => {
+      saveNotificationSettings();
+      const msg = document.getElementById('settingsSaved');
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 3000);
+    });
+  }
 }
 
 // ==========================================
@@ -232,7 +244,8 @@ function saveNotificationSettings() {
     ai: document.getElementById('ai').checked,
     all: document.getElementById('all').checked,
     sound: document.getElementById('sound').checked,
-    interval: parseInt(document.getElementById('interval').value)
+    interval: parseInt(document.getElementById('interval').value),
+    aiChatUrl: document.getElementById('aiChatUrl').value.trim()
   };
 
   chrome.storage.local.set({ settings });
@@ -462,7 +475,6 @@ function renderPrompts(prompts) {
   container.querySelectorAll('.btn-delete').forEach(btn => {
     btn.addEventListener('click', () => deletePrompt(btn.dataset.index));
   });
-});
 }
 
 function openPromptForm(prompt = null, index = -1) {
@@ -507,30 +519,19 @@ function savePrompt() {
     }
     let prompts = data.prompts || [];
 
-    // If empty storage but we were editing a default prompt (which existed in memory), 
-    // we need to initialize storage with defaults first OR just handle the push correctly.
-    // Easiest is to treat "prompts" as the source of truth.
-    // If user is adding a new one, this is fine. 
-    // If user was editing a default, index might point to 0. 
-    // But prompts is empty. So prompts[0] is undefined.
-    // We should seed defaults if we are editing a default.
-
-    // Async fetch defaults then retry
-    chrome.runtime.sendMessage({ action: 'getDefaultPrompts' }, (response) => {
-      const defaults = (response && response.prompts) ? response.prompts : [];
-      if (index >= 0 && index < defaults.length) {
-        prompts = defaults;
-        proceedSave(prompts, index, title, content);
-      } else {
-        // Just add as new
-        proceedSave([], -1, title, content);
-      }
-    });
-    return;
-  }
+    // If prompts is empty but we are trying to edit (index >= 0), it implies we might be editing a default prompt
+    // that hasn't been saved to local storage yet.
+    if (prompts.length === 0 && index >= 0) {
+      chrome.runtime.sendMessage({ action: 'getDefaultPrompts' }, (response) => {
+        const defaults = (response && response.prompts) ? response.prompts : [];
+        // Use defaults as the base list
+        proceedSave(defaults, index, title, content);
+      });
+      return;
+    }
 
     proceedSave(prompts, index, title, content);
-});
+  });
 }
 
 function proceedSave(prompts, index, title, content) {
@@ -605,7 +606,6 @@ function downloadPrompts(prompts) {
   a.download = 'mostaql-prompts.json';
   a.click();
   URL.revokeObjectURL(url);
-});
 }
 
 function importPrompts(event) {

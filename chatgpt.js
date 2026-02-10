@@ -136,6 +136,18 @@ function injectPrompt() {
     });
 }
 
+// Listen for changes in storage (for when tab is reused/focused without reload)
+chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local' && changes.pendingChatGptPrompt) {
+        const newValue = changes.pendingChatGptPrompt.newValue;
+        if (newValue) {
+            console.log('Mostaql Job Notifier: New prompt detected via storage change');
+            // Give a small delay for focus to switch
+            setTimeout(injectPrompt, 500);
+        }
+    }
+});
+
 // Run injection logic
 // We wait a bit for the page to be fully interactive
 if (document.readyState === 'loading') {

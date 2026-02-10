@@ -368,8 +368,12 @@ function handleChatGptClick(promptId) {
             // Save prompt to storage for the ChatGPT content script to pick up
             // Save prompt to storage for the ChatGPT content script to pick up
             chrome.storage.local.set({ 'pendingChatGptPrompt': prompt }, () => {
-                // Open ChatGPT in a new tab
-                window.open('https://chatgpt.com/', '_blank');
+                // Open ChatGPT (or custom URL)
+                chrome.storage.local.get(['settings'], (result) => {
+                    const settings = result.settings || {};
+                    const url = settings.aiChatUrl || 'https://chatgpt.com/';
+                    window.open(url, 'mostaql_ai_chat');
+                });
             });
         } // End processTemplate
 
