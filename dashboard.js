@@ -68,13 +68,14 @@ function loadData() {
         setVal('minBudget', s.minBudget);
         setVal('minHiringRate', s.minHiringRate);
         setVal('maxDuration', s.maxDuration);
-        setVal('telegramToken', s.telegramToken);
-        setVal('telegramChatId', s.telegramChatId);
-        setVal('telegramEnabled', s.telegramEnabled !== false);
+        setVal('cat-development', s.development !== false);
+        setVal('cat-ai', s.ai !== false);
+        setVal('cat-all', s.all !== false);
         setVal('aiChatUrl', s.aiChatUrl || 'https://chatgpt.com/');
         setVal('quietHoursEnabled', s.quietHoursEnabled === true);
         setVal('quietHoursStart', s.quietHoursStart);
         setVal('quietHoursEnd', s.quietHoursEnd);
+        setVal('checkInterval', s.interval || 1);
         setVal('systemToggle', s.systemEnabled !== false);
 
         // Proposals
@@ -99,11 +100,10 @@ function renderRecentProjects(jobs) {
     const recent = jobs.slice(0, 10);
     list.innerHTML = recent.map(job => {
         const budget = job.budget || 'غير محدد';
-        const time = job.time || '';
         const hiringRate = job.hiringRate || 'غير محدد';
         const communications = job.communications || '0';
-        const description = job.description || 'لا يوجد وصف متاح لهذا المشروع حالياً.';
         const status = job.status || 'مفتوح';
+        const duration = job.duration || '';
         
         let statusClass = 'status-open';
         if (status.includes('تنفيذ') || status.includes('عمل')) statusClass = 'status-processing';
@@ -127,7 +127,10 @@ function renderRecentProjects(jobs) {
                             <span>التواصلات: ${communications}</span>
                         </div>
                     </div>
-                    <a href="${job.url}" target="_blank" class="btn-view-project">
+                    <a href="${job.url}" target="_blank" class="btn-view-project btn-apply-autofill" 
+                       data-id="${job.id}" 
+                       data-budget="${budget}" 
+                       data-duration="${duration}">
                         <span>قدّم الآن</span>
                         <i class="fas fa-chevron-left" style="margin-right: 8px; font-size: 10px;"></i>
                     </a>
@@ -135,6 +138,60 @@ function renderRecentProjects(jobs) {
             </div>
         `;
     }).join('');
+
+    // Setup listener for autofill-enabled buttons
+    setupAutofillListeners();
+}
+
+function setupAutofillListeners() {
+    const list = document.getElementById('recentProjectsList');
+    if (!list) return;
+
+    // Remove existing to avoid duplicates if re-rendered
+    list.onclick = (e) => {
+        const btn = e.target.closest('.btn-apply-autofill');
+        if (!btn) return;
+
+        e.preventDefault();
+        const projectId = btn.dataset.id;
+        const budgetText = btn.dataset.budget;
+        const durationText = btn.dataset.duration;
+        const url = btn.href;
+
+        chrome.storage.local.get(['proposalTemplate'], (data) => {
+            const amount = parseMinBudgetValue(budgetText);
+            const duration = parseDurationDays(durationText);
+            
+            const autofillData = {
+                projectId,
+                amount,
+                duration,
+                proposal: data.proposalTemplate || '',
+                timestamp: Date.now()
+            };
+
+            chrome.storage.local.set({ 'mostaql_pending_autofill': autofillData }, () => {
+                const urlWithFlag = url + (url.includes('?') ? '&' : '?') + 'mostaql_autofill=true';
+                window.open(urlWithFlag, '_blank');
+            });
+        });
+    };
+}
+
+function parseMinBudgetValue(budgetText) {
+    if (!budgetText || budgetText === 'غير محدد') return 0;
+    const matches = budgetText.replace(/,/g, '').match(/\d+(\.\d+)?/g);
+    if (!matches) return 0;
+    const values = matches.map(m => parseFloat(m));
+    return Math.min(...values);
+}
+
+function parseDurationDays(durationText) {
+    if (!durationText) return 0;
+    const match = durationText.match(/\d+/);
+    if (match) return parseInt(match[0]);
+    if (durationText.includes("يوم واحد")) return 1;
+    return 0;
 }
 
 function renderPrompts(prompts) {
@@ -180,6 +237,21 @@ function setupEventListeners() {
     const confirmSaveBtn = document.getElementById('confirmSavePrompt');
     if (confirmSaveBtn) confirmSaveBtn.addEventListener('click', savePromptFromModal);
 
+    // Diagnostic Tests
+    const testNotifyBtn = document.getElementById('testNotificationBtn');
+    if (testNotifyBtn) {
+        testNotifyBtn.addEventListener('click', () => {
+            chrome.runtime.sendMessage({ action: 'testNotification' });
+        });
+    }
+
+    const testSoundBtn = document.getElementById('testSoundBtn');
+    if (testSoundBtn) {
+        testSoundBtn.addEventListener('click', () => {
+            chrome.runtime.sendMessage({ action: 'testSound' });
+        });
+    }
+
     // Auto-save Status Toggle
     const systemToggle = document.getElementById('systemToggle');
     if (systemToggle) {
@@ -208,13 +280,14 @@ function saveAllSettings() {
         minBudget: parseInt(getVal('minBudget')) || 0,
         minHiringRate: parseInt(getVal('minHiringRate')) || 0,
         maxDuration: parseInt(getVal('maxDuration')) || 0,
-        telegramToken: getVal('telegramToken'),
-        telegramChatId: getVal('telegramChatId'),
-        telegramEnabled: getVal('telegramEnabled'),
+        development: getVal('cat-development'),
+        ai: getVal('cat-ai'),
+        all: getVal('cat-all'),
         aiChatUrl: getVal('aiChatUrl'),
         quietHoursEnabled: getVal('quietHoursEnabled'),
         quietHoursStart: getVal('quietHoursStart'),
         quietHoursEnd: getVal('quietHoursEnd'),
+        interval: parseInt(getVal('checkInterval')) || 1,
         systemEnabled: getVal('systemToggle')
     };
 

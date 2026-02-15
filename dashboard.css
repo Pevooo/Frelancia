@@ -418,6 +418,27 @@ input:checked+.slider:before {
     transform: translateY(0);
 }
 
+.btn-secondary {
+    background: var(--primary-soft);
+    color: var(--primary);
+    padding: 16px 32px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-secondary:hover {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
 /* Floating Save Bar */
 .sticky-footer {
     position: sticky;
