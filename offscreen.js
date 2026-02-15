@@ -40,13 +40,17 @@ function parseMostaqlHTML(html) {
                 if (!seenIds.has(id)) {
                     const title = link.textContent.trim();
                     const budgetEl = row.querySelector('td:nth-child(4), [class*="budget"]');
-                    const budget = budgetEl ? budgetEl.textContent.trim() : '';
+                    const budget = budgetEl ? budgetEl.textContent.trim() : 'غير محدد';
                     
+                    const timeEl = row.querySelector('td:nth-child(5n), .timeSince, [class*="date"]');
+                    const time = timeEl ? timeEl.textContent.trim() : '';
+
                     seenIds.add(id);
                     jobs.push({
                         id: id,
                         title: title,
                         budget: budget,
+                        time: time,
                         url: href.startsWith('http') ? href : 'https://mostaql.com' + href
                     });
                 }
@@ -65,10 +69,12 @@ function parseMostaqlHTML(html) {
                 const id = idMatch[1];
                 if (!seenIds.has(id)) {
                     seenIds.add(id);
+                    const timeEl = card.querySelector('.timeSince, [class*="date"]');
                     jobs.push({
                         id: id,
                         title: link.textContent.trim(),
-                        budget: '', // Budget often not shown on simple cards, or requires specific selector
+                        budget: 'غير محدد',
+                        time: timeEl ? timeEl.textContent.trim() : '',
                         url: href.startsWith('http') ? href : 'https://mostaql.com' + href
                     });
                 }
