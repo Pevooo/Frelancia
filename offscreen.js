@@ -4,6 +4,8 @@
 
 // Listen for messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log(`Offscreen: Received action: ${message.action}`);
+  
   if (message.action === 'playSound') {
     playNotificationSound();
     sendResponse({ success: true });
@@ -154,7 +156,7 @@ function playNotificationSound() {
   playBeep();
 }
 
-// Create a notification sound using Web Audio API
+// Create a notification sound using Web Audio API (as fallback)
 function playBeep() {
   try {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
