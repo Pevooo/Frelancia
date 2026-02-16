@@ -6,6 +6,143 @@ function isContextValid() {
     return !!chrome.runtime && !!chrome.runtime.id;
 }
 
+function checkForAutofill() {
+    console.log('Mostaql Ext: Checking for pending autofill...');
+    handleAutofillSequence();
+}
+
+function handleAutofillSequence() {
+    if (!isContextValid()) return;
+
+    chrome.storage.local.get(['mostaql_pending_autofill'], (data) => {
+        const autofill = data.mostaql_pending_autofill;
+        if (!autofill) return;
+
+        // Verify it's for the current project
+        const currentProjectId = getProjectId();
+        if (autofill.projectId !== currentProjectId) {
+            console.log('Autofill project ID mismatch, skipping.');
+            return;
+        }
+
+        // Check if data is fresh (last 5 minutes)
+        if (Date.now() - autofill.timestamp > 5 * 60 * 1000) {
+            console.log('Autofill data expired, skipping.');
+            chrome.storage.local.remove(['mostaql_pending_autofill']);
+            return;
+        }
+
+        console.log('Found pending autofill data:', autofill);
+        
+        // Wait for form elements
+        let attempts = 0;
+        const maxAttempts = 20; // 10 seconds total
+        
+        const interval = setInterval(() => {
+            // Flexible selectors for Amount - Prioritize name attribute
+            const amountInput = document.querySelector('input[name="cost"]') || 
+                                document.querySelector('input[name="amount"]') || 
+                                document.querySelector('#bid__cost') || 
+                                document.querySelector('#amount');
+                                
+            // Flexible selectors for Duration - Prioritize name attribute
+            const durationInput = document.querySelector('input[name="period"]') || 
+                                  document.querySelector('input[name="duration"]') || 
+                                  document.querySelector('#bid__period') || 
+                                  document.querySelector('#duration');
+            
+            if (amountInput && durationInput) {
+                clearInterval(interval);
+                // Ensure inputs are visible/interactive
+                amountInput.focus();
+                durationInput.focus();
+                fillForm(amountInput, durationInput, autofill);
+            } else {
+                attempts++;
+                if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    console.log('Mostaql Ext: Bid form elements not found after 10 seconds.');
+                }
+            }
+        }, 500);
+    });
+}
+
+function fillForm(amountInput, durationInput, data) {
+    console.log(`Filling form: Amount=${data.amount}, Duration=${data.duration}`);
+    
+    const triggerEvents = (el) => {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+        // Some frameworks require 'blur' to commit state
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+    };
+
+    // Fill values
+    let amountToFill = data.amount;
+
+    // Fallback: If amount is missing/0, try to parse from the page directly
+    if (!amountToFill || amountToFill === 0) {
+        amountToFill = getBudgetFromPage();
+        if (amountToFill > 0) {
+            console.log('Mostaql Ext: Autofill budget fallback used:', amountToFill);
+        }
+    }
+
+    if (amountToFill > 0) {
+        amountInput.value = amountToFill;
+        amountInput.classList.add('mostaql-autofilled');
+        triggerEvents(amountInput);
+    }
+    
+    if (data.duration > 0) {
+        durationInput.value = data.duration;
+        durationInput.classList.add('mostaql-autofilled');
+        triggerEvents(durationInput);
+    }
+
+    // Fill Proposal content
+    if (data.proposal) {
+        const proposalTextarea = document.querySelector('#bid__details') || 
+                                 document.querySelector('#description') || 
+                                 document.querySelector('textarea[name="details"]') ||
+                                 document.querySelector('textarea[name="description"]') ||
+                                 document.querySelector('#proposal-description');
+        if (proposalTextarea) {
+            proposalTextarea.value = data.proposal;
+            proposalTextarea.classList.add('mostaql-autofilled');
+            triggerEvents(proposalTextarea);
+            
+            // Special handling for character counters on some Mostaql versions
+            proposalTextarea.focus();
+        }
+    }
+
+    // Scroll to the form
+    const form = document.querySelector('#add-proposal-form') || amountInput.closest('form') || amountInput.parentElement;
+    if (form) {
+        form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Show Toast Notification (using existing styles in content.css)
+        const toast = document.createElement('div');
+        toast.className = 'mostaql-autofill-toast';
+        toast.innerHTML = '<i class="fa fa-magic"></i> <span>تم تعبئة تفاصيل العرض تلقائياً!</span>';
+        document.body.appendChild(toast);
+        
+        // Trigger animation
+        setTimeout(() => toast.classList.add('show'), 100);
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 500);
+        }, 5000);
+    }
+
+    // Cleanup: Remove used autofill data
+    chrome.storage.local.remove(['mostaql_pending_autofill']);
+}
+
 function injectTrackButton() {
     // Look for the action buttons in the header
     const actionContainer = document.querySelector('.header_action-wide-container');
@@ -496,6 +633,25 @@ function getProjectDescription() {
     return '';
 }
 
+function getBudgetFromPage() {
+    const budgetEl = document.querySelector('[data-type="project-budget_range"]');
+    if (!budgetEl) return 0;
+    
+    // e.g. "$25.00 - $50.00"
+    const text = budgetEl.textContent.trim();
+    if (!text) return 0;
+    
+    // Extract logical numbers (handling commas)
+    const matches = text.replace(/,/g, '').match(/\d+(\.\d+)?/g);
+    if (!matches || matches.length === 0) return 0;
+    
+    // Parse floats
+    const values = matches.map(m => parseFloat(m));
+    
+    // Return Minimum
+    return Math.min(...values);
+}
+
 // --- Prompt Management ---
 
 function loadPrompts(callback) {
@@ -655,9 +811,14 @@ function createPromptModal(onSave, existingPrompt = null) {
 
 
 // Initial injection
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', injectTrackButton);
-} else {
+function initExtension() {
     injectTrackButton();
+    checkForAutofill();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initExtension);
+} else {
+    initExtension();
 }
 
